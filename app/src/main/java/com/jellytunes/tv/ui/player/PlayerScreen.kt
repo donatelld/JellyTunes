@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -50,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -143,7 +145,7 @@ fun PlayerScreen(
                         colors = colors,
                         modifier = Modifier
                             .fillMaxHeight()
-                            .padding(top = 32.dp, bottom = 32.dp, start = 48.dp)
+                            .fillMaxWidth()
                     )
                 }
                 
@@ -170,8 +172,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .weight(0.45f)
-                    .fillMaxHeight()
-                    .padding(end = 64.dp),
+                    .fillMaxHeight(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -194,7 +195,9 @@ fun PlayerScreen(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -208,7 +211,9 @@ fun PlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -222,7 +227,9 @@ fun PlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
                         )
                     }
 
@@ -292,14 +299,14 @@ private fun AlbumCoverLarge(
 
     Box(
         modifier = modifier
-            .aspectRatio(1f)
+            .fillMaxSize()
             .shadow(
                 elevation = 32.dp,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(0.dp),
                 ambientColor = colors.primary.copy(alpha = 0.3f),
                 spotColor = colors.primary.copy(alpha = 0.4f)
             )
-            .clip(RoundedCornerShape(16.dp)),
+            .clip(RoundedCornerShape(0.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (track != null) {
@@ -403,9 +410,29 @@ private fun PlayPauseButton(
         label = "primary"
     )
 
+    // 添加缩放动画
+    val scale by animateFloatAsState(
+        targetValue = if (isPlaying) 1.0f else 1.1f,
+        animationSpec = tween(200),
+        label = "scale"
+    )
+    
+    // 添加旋转动画（仅用于播放状态切换时）
+    var rotationTarget by remember { mutableStateOf(0f) }
+    val rotation by animateFloatAsState(
+        targetValue = rotationTarget,
+        animationSpec = tween(150),
+        label = "rotation"
+    )
+    
     Box(
         modifier = Modifier
             .size(88.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                rotationZ = rotation
+            }
             .drawBehind {
                 // Glow effect
                 drawCircle(
@@ -428,7 +455,12 @@ private fun PlayPauseButton(
                     brush = Brush.linearGradient(
                         colors = listOf(colors.primary, colors.primaryLight)
                     )
-                ),
+                )
+                .clickable { 
+                    // 触发旋转动画
+                    rotationTarget += 180f
+                    onClick()
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -468,7 +500,7 @@ private fun ProgressSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 32.dp)
     ) {
         // Custom progress bar with glow
         Box(
