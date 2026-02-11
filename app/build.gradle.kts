@@ -15,13 +15,32 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../jellytunes-release-key.jks")
+            storePassword = "jellytunes123"
+            keyAlias = "jellytunes-key"
+            keyPassword = "jellytunes123"
+        }
+    }
+
     buildTypes {
-        release {
+        getByName("release") {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val newApkName = "JellyTunes_${variant.versionName}.apk"
+            output.outputFileName = newApkName
         }
     }
 
