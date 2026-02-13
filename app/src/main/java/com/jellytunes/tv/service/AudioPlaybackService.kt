@@ -202,26 +202,35 @@ class AudioPlaybackService(private val context: Context) {
     }
     
     fun togglePlayPause() {
+        println("⏯️ togglePlayPause() 被调用")
         exoPlayer?.let { player ->
             if (player.isPlaying) {
+                println("⏸️ 当前正在播放，执行暂停")
                 player.pause()
             } else {
+                println("▶️ 当前已暂停，执行播放")
                 player.play()
             }
+        } ?: run {
+            println("❌ ExoPlayer 未初始化")
         }
     }
     
     fun playNext() {
+        println("⏭️ playNext() 被调用，当前索引: $currentIndex")
         currentIndex = (currentIndex + 1) % audioQueue.size
+        println("⏭️ 新索引: $currentIndex")
         playCurrentTrack()
     }
     
     fun playPrevious() {
+        println("⏮️ playPrevious() 被调用，当前索引: $currentIndex")
         currentIndex = if (currentIndex > 0) {
             currentIndex - 1
         } else {
             audioQueue.size - 1
         }
+        println("⏮️ 新索引: $currentIndex")
         playCurrentTrack()
     }
     
