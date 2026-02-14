@@ -1,21 +1,22 @@
 package com.jellytunes.tv.service
 
 import android.content.Context
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
-import com.jellytunes.tv.data.model.BaseItemDto
-import com.jellytunes.tv.data.repository.JellyfinRepository
+import com.jellytunes.tv.data.metadata.Lyrics
+import com.jellytunes.tv.data.repository.SmbMusicRepository
+import com.jellytunes.tv.ui.player.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import com.jellytunes.tv.data.config.AppConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class AudioPlaybackService(private val context: Context) {
-    private val jellyfinRepo = JellyfinRepository()
+    private val smbRepository = SmbMusicRepository(context)
     private var exoPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     
@@ -29,10 +30,13 @@ class AudioPlaybackService(private val context: Context) {
     private val _duration = MutableStateFlow(0L)
     val duration: StateFlow<Long> = _duration
     
-    private val _currentTrack = MutableStateFlow<BaseItemDto?>(null)
-    val currentTrack: StateFlow<BaseItemDto?> = _currentTrack
+    private val _currentTrack = MutableStateFlow<Track?>(null)
+    val currentTrack: StateFlow<Track?> = _currentTrack
     
-    private var audioQueue = mutableListOf<BaseItemDto>()
+    private val _currentLyrics = MutableStateFlow<Lyrics?>(null)
+    val currentLyrics: StateFlow<Lyrics?> = _currentLyrics
+    
+    private var audioQueue = mutableListOf<Track>()
     private var currentIndex = 0
     
     init {
@@ -47,15 +51,6 @@ class AudioPlaybackService(private val context: Context) {
                     _isPlaying.value = isPlaying
                 }
                 
-                override fun onPositionDiscontinuity(
-                    oldPosition: androidx.media3.common.Player.PositionInfo,
-                    newPosition: androidx.media3.common.Player.PositionInfo,
-                    reason: Int
-                ) {
-                    _currentPosition.value = currentPosition
-                    _duration.value = duration
-                }
-                
                 override fun onEvents(
                     player: androidx.media3.common.Player,
                     events: androidx.media3.common.Player.Events
@@ -67,37 +62,32 @@ class AudioPlaybackService(private val context: Context) {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         androidx.media3.common.Player.STATE_READY -> {
-                            println("✅ Player ready")
+                            println("Player ready")
                         }
                         androidx.media3.common.Player.STATE_BUFFERING -> {
-                            println("⏳ Buffering...")
+                            println("Buffering...")
                         }
                         androidx.media3.common.Player.STATE_ENDED -> {
-                            println("⏹️ Track ended")
-                            if (AppConfig.AUTO_PLAY_NEXT) {
-                                playNext()
-                            }
+                            println("Track ended")
+                            playNext()
                         }
                         androidx.media3.common.Player.STATE_IDLE -> {
-                            println("⏸️ Player idle")
+                            println("Player idle")
                         }
                     }
                 }
                 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    println("❌ Player error: ${error.errorCodeName} - ${error.message}")
-                    // Try next track on error
-                    if (AppConfig.AUTO_PLAY_NEXT) {
-                        playNext()
-                    }
+                    println("Player error: ${error.errorCodeName} - ${error.message}")
+                    playNext()
                 }
             })
         }
         
-        // Add periodic position updates for smooth progress bar
+        // Position updates every 500ms for smooth lyrics sync
         CoroutineScope(Dispatchers.Main).launch {
             while (true) {
-                delay(1000) // Update every second
+                delay(500)
                 exoPlayer?.let { player ->
                     if (player.isPlaying) {
                         _currentPosition.value = player.currentPosition
@@ -112,125 +102,107 @@ class AudioPlaybackService(private val context: Context) {
             .build()
     }
     
-    fun connectToJellyfin(username: String, password: String, onResult: (Boolean) -> Unit) {
+    fun connectToSmb(onResult: (Boolean) -> Unit) {
         CoroutineScope(Dispatchers.IO).launch {
-            println("=== Jellyfin Connection Debug ===")
-            println("Attempting to connect to Jellyfin at: http://10.0.2.2:8096/")
-            println("Username: $username")
+            println("Starting SMB connection to NAS...")
+            val result = smbRepository.connect()
             
-            val result = jellyfinRepo.authenticate(username, password)
-            
-            if (result.isSuccess) {
-                val authResult = result.getOrNull()!!
-                println("✅ Authentication SUCCESS!")
-                println("User ID: ${authResult.user.id}")
-                println("Access Token: ${authResult.accessToken.substring(0, 10)}...")
-                
-                loadRandomAudioItems()
-                onResult(true)
+            if (result) {
+                println("Loading music from NAS...")
+                loadMusicLibrary()
+                CoroutineScope(Dispatchers.Main).launch {
+                    onResult(true)
+                }
             } else {
-                val error = result.exceptionOrNull()
-                println("❌ Authentication FAILED!")
-                println("Error: ${error?.message}")
-                println("Error type: ${error?.javaClass?.simpleName}")
-                onResult(false)
+                CoroutineScope(Dispatchers.Main).launch {
+                    onResult(false)
+                }
             }
-            println("================================")
         }
     }
     
-    private fun loadRandomAudioItems() {
-        CoroutineScope(Dispatchers.IO).launch {
-            println("Loading random audio items from Jellyfin...")
-            val result = jellyfinRepo.getRandomAudioItems(50)
-            
-            if (result.isSuccess) {
-                val items = result.getOrNull() ?: emptyList()
-                println("✅ Successfully loaded ${items.size} audio items")
-                
-                if (items.isNotEmpty()) {
-                    println("First item: ${items[0].name} by ${items[0].artistItems?.firstOrNull()?.name}")
-                    audioQueue.clear()
-                    audioQueue.addAll(items)
-                    currentIndex = 0
-                    playCurrentTrack()
-                } else {
-                    println("⚠️ No audio items found in library")
-                }
-            } else {
-                val error = result.exceptionOrNull()
-                println("❌ Failed to load audio items!")
-                println("Error: ${error?.message}")
+    private suspend fun loadMusicLibrary() {
+        val tracks = smbRepository.loadMusicLibrary(100)
+        println("Successfully loaded ${tracks.size} tracks")
+        
+        if (tracks.isNotEmpty()) {
+            println("First track: ${tracks[0].title} by ${tracks[0].artist}")
+            audioQueue.clear()
+            audioQueue.addAll(tracks.shuffled())
+            currentIndex = 0
+            CoroutineScope(Dispatchers.Main).launch {
+                playCurrentTrack()
             }
+        } else {
+            println("No audio files found in NAS")
         }
     }
     
     private fun playCurrentTrack() {
         val track = audioQueue.getOrNull(currentIndex) ?: return
         _currentTrack.value = track
+        _currentLyrics.value = null
         
-        val streamUrl = jellyfinRepo.getAudioStreamUrl(track.id)
-        if (streamUrl != null) {
-            CoroutineScope(Dispatchers.Main).launch {
-                try {
-                    // Create media item with proper headers
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(streamUrl)
-                        .setMimeType("audio/*")
-                        .build()
-                    
-                    exoPlayer?.setMediaItem(mediaItem)
-                    exoPlayer?.prepare()
-                    exoPlayer?.play()
-                    
-                    println("▶️ Playing: ${track.name} by ${track.artistItems?.firstOrNull()?.name}")
-                } catch (e: Exception) {
-                    println("❌ Error playing track: ${e.message}")
-                    // Try next track if current fails
-                    if (AppConfig.AUTO_PLAY_NEXT) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val audioFile = smbRepository.getAudioFile(track)
+            if (audioFile != null) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    try {
+                        val mediaItem = MediaItem.Builder()
+                            .setUri(audioFile.toUri())
+                            .build()
+                        
+                        exoPlayer?.setMediaItem(mediaItem)
+                        exoPlayer?.prepare()
+                        exoPlayer?.play()
+                        
+                        println("Playing: ${track.title} by ${track.artist}")
+                    } catch (e: Exception) {
+                        println("Error playing track: ${e.message}")
                         playNext()
                     }
                 }
+                
+                // Load lyrics in background
+                loadLyrics(track)
+            } else {
+                println("Failed to get audio file for: ${track.title}")
+                CoroutineScope(Dispatchers.Main).launch {
+                    playNext()
+                }
             }
-        } else {
-            println("❌ Failed to get stream URL for track: ${track.name}")
-            // Skip to next track if stream URL generation fails
-            if (AppConfig.AUTO_PLAY_NEXT) {
-                playNext()
-            }
+        }
+    }
+    
+    private suspend fun loadLyrics(track: Track) {
+        val lyrics = smbRepository.getLyrics(track)
+        _currentLyrics.value = lyrics
+        if (lyrics != null) {
+            println("Loaded lyrics: ${lyrics.lines.size} lines")
         }
     }
     
     fun togglePlayPause() {
-        println("⏯️ togglePlayPause() 被调用")
         exoPlayer?.let { player ->
             if (player.isPlaying) {
-                println("⏸️ 当前正在播放，执行暂停")
                 player.pause()
             } else {
-                println("▶️ 当前已暂停，执行播放")
                 player.play()
             }
-        } ?: run {
-            println("❌ ExoPlayer 未初始化")
         }
     }
     
     fun playNext() {
-        println("⏭️ playNext() 被调用，当前索引: $currentIndex")
         currentIndex = (currentIndex + 1) % audioQueue.size
-        println("⏭️ 新索引: $currentIndex")
         playCurrentTrack()
     }
     
     fun playPrevious() {
-        println("⏮️ playPrevious() 被调用，当前索引: $currentIndex")
         currentIndex = if (currentIndex > 0) {
             currentIndex - 1
         } else {
             audioQueue.size - 1
         }
-        println("⏮️ 新索引: $currentIndex")
         playCurrentTrack()
     }
     

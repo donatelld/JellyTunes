@@ -1,5 +1,6 @@
 package com.jellytunes.tv.ui.player
 
+import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -51,6 +52,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -65,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.jellytunes.tv.ui.lyrics.LyricsView
 import com.jellytunes.tv.ui.theme.JellyTunesColors
 import com.jellytunes.tv.ui.theme.JellyTunesTypography
 import com.jellytunes.tv.ui.theme.LocalJellyTunesColors
@@ -168,7 +171,7 @@ fun PlayerScreen(
                 )
             }
 
-            // Right side - Track info and controls (45% width)
+            // Right side - Track info, lyrics and controls (45% width)
             Box(
                 modifier = Modifier
                     .weight(0.45f)
@@ -176,91 +179,123 @@ fun PlayerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    playerState.currentTrack?.let { track ->
-                        // Track title
-                        Text(
-                            text = track.title,
-                            style = JellyTunesTypography.trackTitle.copy(
-                                color = colors.textPrimary,
-                                shadow = Shadow(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    offset = Offset(0f, 4f),
-                                    blurRadius = 8f
-                                )
-                            ),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
+                    // Top section - Track info (30%)
+                    Column(
+                        modifier = Modifier
+                            .weight(0.30f)
+                            .fillMaxWidth()
+                            .padding(top = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        playerState.currentTrack?.let { track ->
+                            // Track title
+                            Text(
+                                text = track.title,
+                                style = JellyTunesTypography.trackTitle.copy(
+                                    color = colors.textPrimary,
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = 0.5f),
+                                        offset = Offset(0f, 4f),
+                                        blurRadius = 8f
+                                    )
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Artist
+                            Text(
+                                text = track.artist,
+                                style = JellyTunesTypography.artistName.copy(
+                                    color = colors.textSecondary
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Album
+                            Text(
+                                text = track.album,
+                                style = JellyTunesTypography.albumName.copy(
+                                    color = colors.textMuted
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp)
+                            )
+                        }
+                    }
+
+                    // Middle section - Lyrics (40%)
+                    if (playerState.showLyrics) {
+                        LyricsView(
+                            lyrics = playerState.lyrics,
+                            currentPositionMs = playerState.currentPositionMs,
                             modifier = Modifier
+                                .weight(0.40f)
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
+                                .padding(horizontal = 16.dp)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(0.40f))
+                    }
+
+                    // Bottom section - Controls (30%)
+                    Column(
+                        modifier = Modifier
+                            .weight(0.30f)
+                            .fillMaxWidth()
+                            .padding(bottom = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // Play/Pause button with glow effect
+                        PlayPauseButton(
+                            isPlaying = playerState.isPlaying,
+                            colors = colors,
+                            onClick = onPlayPauseToggle
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Progress bar
+                        ProgressSection(
+                            currentPositionMs = playerState.currentPositionMs,
+                            durationMs = playerState.durationMs,
+                            colors = colors
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Artist
+                        // Navigation hint
                         Text(
-                            text = track.artist,
-                            style = JellyTunesTypography.artistName.copy(
-                                color = colors.textSecondary
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Album
-                        Text(
-                            text = track.album,
-                            style = JellyTunesTypography.albumName.copy(
+                            text = "< >  TRACK  ·  ↑↓  THEME",
+                            style = JellyTunesTypography.hint.copy(
                                 color = colors.textMuted
                             ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
+                            textAlign = TextAlign.Center
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(48.dp))
-
-                    // Play/Pause button with glow effect
-                    PlayPauseButton(
-                        isPlaying = playerState.isPlaying,
-                        colors = colors,
-                        onClick = onPlayPauseToggle
-                    )
-
-                    Spacer(modifier = Modifier.height(48.dp))
-
-                    // Progress bar
-                    ProgressSection(
-                        currentPositionMs = playerState.currentPositionMs,
-                        durationMs = playerState.durationMs,
-                        colors = colors
-                    )
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    // Navigation hint
-                    Text(
-                        text = "< >  TRACK  ·  ↑↓  THEME",
-                        style = JellyTunesTypography.hint.copy(
-                            color = colors.textMuted
-                        ),
-                        textAlign = TextAlign.Center
-                    )
                 }
             }
         }
@@ -311,39 +346,60 @@ private fun AlbumCoverLarge(
     ) {
         if (track != null) {
             var showDefault by remember { mutableStateOf(false) }
-            var imageUrl by remember(track.id) { 
-                mutableStateOf(track.albumArtUrl ?: track.artistImageUrl) 
-            }
-
-            if (imageUrl != null && !showDefault) {
-                val painter = rememberAsyncImagePainter(
-                    model = ImageRequest.Builder(context)
-                        .data(imageUrl)
-                        .crossfade(500)
-                        .build()
-                )
-
-                when (painter.state) {
-                    is AsyncImagePainter.State.Error -> {
-                        if (imageUrl == track.albumArtUrl && track.artistImageUrl != null) {
-                            imageUrl = track.artistImageUrl
-                        } else {
-                            showDefault = true
-                        }
-                    }
-                    else -> {
-                        Image(
-                            painter = painter,
-                            contentDescription = "Album cover",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+            
+            // Check for embedded album art first
+            val albumArtBitmap = remember(track.id, track.albumArtData) {
+                track.albumArtData?.let { data ->
+                    try {
+                        BitmapFactory.decodeByteArray(data, 0, data.size)
+                    } catch (e: Exception) {
+                        null
                     }
                 }
             }
+            
+            if (albumArtBitmap != null) {
+                Image(
+                    bitmap = albumArtBitmap.asImageBitmap(),
+                    contentDescription = "Album cover",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                var imageUrl by remember(track.id) { 
+                    mutableStateOf(track.albumArtUrl ?: track.artistImageUrl) 
+                }
 
-            if (showDefault || imageUrl == null) {
-                DefaultAlbumCover(colors = colors)
+                if (imageUrl != null && !showDefault) {
+                    val painter = rememberAsyncImagePainter(
+                        model = ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .crossfade(500)
+                            .build()
+                    )
+
+                    when (painter.state) {
+                        is AsyncImagePainter.State.Error -> {
+                            if (imageUrl == track.albumArtUrl && track.artistImageUrl != null) {
+                                imageUrl = track.artistImageUrl
+                            } else {
+                                showDefault = true
+                            }
+                        }
+                        else -> {
+                            Image(
+                                painter = painter,
+                                contentDescription = "Album cover",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                    }
+                }
+
+                if (showDefault || imageUrl == null) {
+                    DefaultAlbumCover(colors = colors)
+                }
             }
         } else {
             DefaultAlbumCover(colors = colors)

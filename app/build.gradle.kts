@@ -100,6 +100,12 @@ dependencies {
     // Core AndroidX
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
+    
+    // SMB/CIFS for NAS access
+    implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
+    
+    // Audio metadata extraction
+    implementation("net.jthink:jaudiotagger:3.0.1")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")

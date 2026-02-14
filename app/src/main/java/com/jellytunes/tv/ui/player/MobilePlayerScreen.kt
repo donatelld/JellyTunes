@@ -1,5 +1,6 @@
 package com.jellytunes.tv.ui.player
 
+import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,6 +48,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.jellytunes.tv.ui.lyrics.LyricsViewCompact
 import com.jellytunes.tv.ui.theme.JellyTunesColors
 import com.jellytunes.tv.ui.theme.JellyTunesTypography
 import com.jellytunes.tv.ui.theme.LocalJellyTunesColors
@@ -196,9 +199,21 @@ private fun FullScreenContent(
             track = track,
             colors = colors,
             modifier = Modifier
-                .weight(1f)
+                .weight(0.65f)
                 .padding(top = 8.dp) // 向上调整，减少顶部间距
         )
+        
+        // 歌词区域
+        if (playerState.showLyrics) {
+            LyricsViewCompact(
+                lyrics = playerState.lyrics,
+                currentPositionMs = playerState.currentPositionMs,
+                modifier = Modifier
+                    .weight(0.15f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+            )
+        }
         
         // 底部控制区域
         BottomControlSection(
@@ -289,39 +304,60 @@ private fun AlbumCoverImage(
     ) {
         if (track != null) {
             var showDefault by remember { mutableStateOf(false) }
-            var imageUrl by remember(track.id) { 
-                mutableStateOf(track.albumArtUrl ?: track.artistImageUrl) 
-            }
-
-            if (imageUrl != null && !showDefault) {
-                val painter = rememberAsyncImagePainter(
-                    model = ImageRequest.Builder(context)
-                        .data(imageUrl)
-                        .crossfade(500)
-                        .build()
-                )
-
-                when (painter.state) {
-                    is AsyncImagePainter.State.Error -> {
-                        if (imageUrl == track.albumArtUrl && track.artistImageUrl != null) {
-                            imageUrl = track.artistImageUrl
-                        } else {
-                            showDefault = true
-                        }
-                    }
-                    else -> {
-                        Image(
-                            painter = painter,
-                            contentDescription = "Album cover",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+            
+            // Check for embedded album art first
+            val albumArtBitmap = remember(track.id, track.albumArtData) {
+                track.albumArtData?.let { data ->
+                    try {
+                        BitmapFactory.decodeByteArray(data, 0, data.size)
+                    } catch (e: Exception) {
+                        null
                     }
                 }
             }
+            
+            if (albumArtBitmap != null) {
+                Image(
+                    bitmap = albumArtBitmap.asImageBitmap(),
+                    contentDescription = "Album cover",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                var imageUrl by remember(track.id) { 
+                    mutableStateOf(track.albumArtUrl ?: track.artistImageUrl) 
+                }
 
-            if (showDefault || imageUrl == null) {
-                DefaultMobileAlbumCover(colors = colors)
+                if (imageUrl != null && !showDefault) {
+                    val painter = rememberAsyncImagePainter(
+                        model = ImageRequest.Builder(context)
+                            .data(imageUrl)
+                            .crossfade(500)
+                            .build()
+                    )
+
+                    when (painter.state) {
+                        is AsyncImagePainter.State.Error -> {
+                            if (imageUrl == track.albumArtUrl && track.artistImageUrl != null) {
+                                imageUrl = track.artistImageUrl
+                            } else {
+                                showDefault = true
+                            }
+                        }
+                        else -> {
+                            Image(
+                                painter = painter,
+                                contentDescription = "Album cover",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                    }
+                }
+
+                if (showDefault || imageUrl == null) {
+                    DefaultMobileAlbumCover(colors = colors)
+                }
             }
         } else {
             DefaultMobileAlbumCover(colors = colors)
