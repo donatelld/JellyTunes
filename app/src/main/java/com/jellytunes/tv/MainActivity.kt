@@ -34,29 +34,31 @@ class MainActivity : ComponentActivity() {
             val currentPosition by audioService.currentPosition.collectAsState()
             val duration by audioService.duration.collectAsState()
             val currentJellyfinTrack by audioService.currentTrack.collectAsState()
+            val currentLyrics by audioService.currentLyrics.collectAsState()
+            val currentLyricIndex by audioService.currentLyricIndex.collectAsState()
             
-            // Convert Jellyfin track to UI Track
+            // Convert Navidrome track to UI Track
             val currentTrack = currentJellyfinTrack?.let { track ->
                 Track(
                     id = track.id,
-                    title = track.name,
-                    artist = track.artistItems?.firstOrNull()?.name ?: "Unknown Artist",
-                    album = track.album ?: "Unknown Album",
-                    durationMs = (track.runTimeTicks ?: 0L) / 10000, // Convert ticks to ms
-                    albumArtUrl = getImageUrl(track.albumId ?: track.id, track.albumPrimaryImageTag),
-                    artistImageUrl = getImageUrl(track.artistItems?.firstOrNull()?.id ?: "", null)
+                    title = track.title,
+                    artist = track.artist,
+                    album = track.album,
+                    durationMs = track.durationMs,
+                    albumArtUrl = track.albumArtUrl,
+                    artistImageUrl = track.artistImageUrl
                 )
             }
             
             JellyTunesTheme(colors = currentColors) {
-                // Connect to Jellyfin on startup
+                // Connect to Navidrome on startup
                 LaunchedEffect(Unit) {
-                    println("Starting Jellyfin connection...")
-                    audioService.connectToJellyfin(AppConfig.JELLYFIN_USERNAME, AppConfig.JELLYFIN_PASSWORD) { success ->
+                    println("Starting Navidrome connection...")
+                    audioService.connectToNavidrome(AppConfig.NAVIDROME_USERNAME, AppConfig.NAVIDROME_PASSWORD) { success ->
                         if (success) {
-                            println("Successfully connected to Jellyfin!")
+                            println("Successfully connected to Navidrome!")
                         } else {
-                            println("Failed to connect to Jellyfin")
+                            println("Failed to connect to Navidrome")
                         }
                     }
                 }
@@ -66,7 +68,9 @@ class MainActivity : ComponentActivity() {
                         currentTrack = currentTrack,
                         isPlaying = isPlaying,
                         currentPositionMs = currentPosition,
-                        durationMs = duration
+                        durationMs = duration,
+                        currentLyrics = currentLyrics,
+                        currentLyricIndex = currentLyricIndex
                     ),
                     onPlayPauseToggle = {
                         audioService.togglePlayPause()
@@ -82,14 +86,6 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
-        }
-    }
-    
-    private fun getImageUrl(itemId: String, imageTag: String?): String? {
-        return if (imageTag != null) {
-            "${AppConfig.JELLYFIN_SERVER_URL}/Items/$itemId/Images/Primary?tag=$imageTag&quality=90"
-        } else {
-            "${AppConfig.JELLYFIN_SERVER_URL}/Items/$itemId/Images/Primary?quality=90"
         }
     }
     

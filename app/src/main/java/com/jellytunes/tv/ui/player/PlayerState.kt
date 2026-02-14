@@ -1,5 +1,7 @@
 package com.jellytunes.tv.ui.player
 
+import com.jellytunes.tv.data.model.LyricsLine
+
 data class Track(
     val id: String,
     val title: String,
@@ -14,5 +16,7 @@ data class PlayerState(
     val currentTrack: Track? = null,
     val isPlaying: Boolean = false,
     val currentPositionMs: Long = 0L,
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val currentLyrics: List<LyricsLine> = emptyList(),
+    val currentLyricIndex: Int? = null
 )

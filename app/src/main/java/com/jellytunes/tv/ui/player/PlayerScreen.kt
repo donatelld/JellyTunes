@@ -3,6 +3,11 @@ package com.jellytunes.tv.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,6 +31,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,14 +67,23 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalDensity
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.jellytunes.tv.ui.theme.JellyTunesColors
 import com.jellytunes.tv.ui.theme.JellyTunesTypography
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.jellytunes.tv.data.model.LyricsLine
 import com.jellytunes.tv.ui.theme.LocalJellyTunesColors
 
 @Composable
@@ -111,10 +128,6 @@ fun PlayerScreen(
                         }
                         Key.DirectionLeft -> {
                             onPreviousTrack()
-                            true
-                        }
-                        Key.DirectionUp, Key.DirectionDown -> {
-                            onThemeChange()
                             true
                         }
                         else -> false
@@ -168,7 +181,7 @@ fun PlayerScreen(
                 )
             }
 
-            // Right side - Track info and controls (45% width)
+            // Right side - Track info, lyrics and controls (45% width)
             Box(
                 modifier = Modifier
                     .weight(0.45f)
@@ -176,116 +189,118 @@ fun PlayerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    playerState.currentTrack?.let { track ->
-                        // Track title
-                        Text(
-                            text = track.title,
-                            style = JellyTunesTypography.trackTitle.copy(
-                                color = colors.textPrimary,
-                                shadow = Shadow(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    offset = Offset(0f, 4f),
-                                    blurRadius = 8f
+                    // Top padding section
+                    Spacer(modifier = Modifier.weight(0.05f))  // 5% 顶部空白
+                    
+                    // Top section - Song information (optimized for single line title)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.35f)  // 增加到35%
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.SpaceEvenly  // 均匀分布间距
+                        ) {
+                            playerState.currentTrack?.let { track ->
+                                // Track title - horizontal scrolling implementation
+                                HorizontalMarqueeText(
+                                    text = track.title,
+                                    style = JellyTunesTypography.trackTitle.copy(
+                                        color = colors.textPrimary,
+                                        shadow = Shadow(
+                                            color = Color.Black.copy(alpha = 0.5f),
+                                            offset = Offset(0f, 4f),
+                                            blurRadius = 8f
+                                        )
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
                                 )
-                            ),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                        )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                                // Artist
+                                Text(
+                                    text = track.artist,
+                                    style = JellyTunesTypography.artistName.copy(
+                                        color = colors.textSecondary
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
 
-                        // Artist
-                        Text(
-                            text = track.artist,
-                            style = JellyTunesTypography.artistName.copy(
-                                color = colors.textSecondary
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                        )
+                                // Album
+                                Text(
+                                    text = track.album,
+                                    style = JellyTunesTypography.albumName.copy(
+                                        color = colors.textMuted
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Album
-                        Text(
-                            text = track.album,
-                            style = JellyTunesTypography.albumName.copy(
-                                color = colors.textMuted
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
+                    // Middle section - Lyrics display (reduced height)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.25f)  // 减少到25%
+                            .padding(horizontal = 24.dp)
+                            .padding(top = 16.dp),  // 向下移动16dp
+                        contentAlignment = Alignment.TopCenter  // 改为顶部对齐，让歌词更居中
+                    ) {
+                        LyricsScrollDisplay(
+                            lyrics = playerState.currentLyrics,
+                            currentLyricIndex = playerState.currentLyricIndex,
+                            colors = colors,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(48.dp))
+                    // Bottom section - Controls (increased height)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.4f)  // 保持40%
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            // Play/Pause button with glow effect
+                            PlayPauseButton(
+                                isPlaying = playerState.isPlaying,
+                                colors = colors,
+                                onClick = onPlayPauseToggle
+                            )
 
-                    // Play/Pause button with glow effect
-                    PlayPauseButton(
-                        isPlaying = playerState.isPlaying,
-                        colors = colors,
-                        onClick = onPlayPauseToggle
-                    )
+                            Spacer(modifier = Modifier.height(24.dp))
 
-                    Spacer(modifier = Modifier.height(48.dp))
-
-                    // Progress bar
-                    ProgressSection(
-                        currentPositionMs = playerState.currentPositionMs,
-                        durationMs = playerState.durationMs,
-                        colors = colors
-                    )
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    // Navigation hint
-                    Text(
-                        text = "< >  TRACK  ·  ↑↓  THEME",
-                        style = JellyTunesTypography.hint.copy(
-                            color = colors.textMuted
-                        ),
-                        textAlign = TextAlign.Center
-                    )
+                            // Progress bar
+                            ProgressSection(
+                                currentPositionMs = playerState.currentPositionMs,
+                                durationMs = playerState.durationMs,
+                                colors = colors
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Theme indicator - top right
-        Text(
-            text = colors.name.uppercase(),
-            style = JellyTunesTypography.brand.copy(
-                color = colors.primary
-            ),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(24.dp)
-        )
-
-        // Brand watermark - bottom right
-        Text(
-            text = "JELLYTUNES",
-            style = JellyTunesTypography.brand.copy(
-                color = colors.textMuted
-            ),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp)
-        )
+        // 移除了右下角的 JELLYTUNES 品牌标识
     }
 }
 
@@ -320,6 +335,9 @@ private fun AlbumCoverLarge(
                     model = ImageRequest.Builder(context)
                         .data(imageUrl)
                         .crossfade(500)
+                        .placeholder(android.R.drawable.screen_background_dark_transparent)  // 透明占位符
+                        .fallback(android.R.drawable.screen_background_dark_transparent)     // 透明后备
+                        .error(android.R.drawable.screen_background_dark_transparent)        // 透明错误图
                         .build()
                 )
 
@@ -335,8 +353,12 @@ private fun AlbumCoverLarge(
                         Image(
                             painter = painter,
                             contentDescription = "Album cover",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Transparent),
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.Center,
+                            alpha = 1f  // 确保完全不透明
                         )
                     }
                 }
@@ -571,4 +593,197 @@ private fun formatTime(ms: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+@Composable
+fun HorizontalMarqueeText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    var textWidthPx by remember { mutableStateOf(0) }
+    var containerWidthPx by remember { mutableStateOf(0) }
+    // 更宽松的滚动条件：只要超出显示区域就滚动
+    val needsScrolling = textWidthPx > containerWidthPx
+    
+    var offset by remember { mutableStateOf(0f) }
+    var direction by remember { mutableStateOf(1) } // 1向右，-1向左
+    
+    // 只有需要滚动时才启动动画
+    LaunchedEffect(needsScrolling) {
+        if (needsScrolling) {
+            while (true) {
+                if (direction == 1) {
+                    // 向右滚动（较小幅度，确保不会超出边界）
+                    offset += 1f
+                    if (offset >= 80f) {
+                        direction = -1
+                        delay(800) // 在右侧停留0.8秒
+                    }
+                } else {
+                    // 向左滚动
+                    offset -= 1f
+                    if (offset <= -80f) {
+                        direction = 1
+                        delay(800) // 在左侧停留0.8秒
+                    }
+                }
+                delay(25) // 稍快的滚动速度
+            }
+        } else {
+            offset = 0f // 不需要滚动时保持居中
+        }
+    }
+    
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { size ->
+                containerWidthPx = size.width
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = style,
+            maxLines = 1,
+            onTextLayout = { textLayoutResult ->
+                textWidthPx = with(density) { 
+                    textLayoutResult.size.width 
+                }
+            },
+            modifier = Modifier
+                .graphicsLayer {
+                    translationX = if (needsScrolling) offset else 0f
+                }
+                .fillMaxWidth()
+                .padding(horizontal = 30.dp), // 减小间距到30dp以显示更多内容
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun LyricsScrollDisplay(
+    lyrics: List<LyricsLine>,
+    currentLyricIndex: Int?,
+    colors: JellyTunesColors,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    
+    // Auto-scroll to current lyric
+    LaunchedEffect(currentLyricIndex) {
+        currentLyricIndex?.let { index ->
+            // 只在有足够歌词时才滚动
+            if (lyrics.size > 3) {  // 改为3行以上才滚动
+                listState.animateScrollToItem(index.coerceAtMost(lyrics.size - 1))
+            }
+        }
+    }
+    
+    if (lyrics.isEmpty()) {
+        Box(
+            modifier = modifier,
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "暂无歌词",
+                style = JellyTunesTypography.hint.copy(
+                    color = colors.textMuted,
+                    fontSize = JellyTunesTypography.hint.fontSize * 1.1f
+                )
+            )
+        }
+    } else {
+        LazyColumn(
+            state = listState,
+            modifier = modifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)  // 增加行间距到8dp
+        ) {
+            // 限制最多显示3行歌词
+            val displayLyrics = if (lyrics.size <= 3) {
+                lyrics
+            } else {
+                // 如果歌词超过3行，显示当前行及其前后行
+                val startIndex = (currentLyricIndex ?: 0).coerceAtLeast(0)
+                val endIndex = (startIndex + 2).coerceAtMost(lyrics.size - 1)
+                lyrics.subList(startIndex, endIndex + 1)
+            }
+            
+            itemsIndexed(displayLyrics) { index, lyric ->
+                val globalIndex = if (lyrics.size <= 3) index else index + (currentLyricIndex ?: 0)
+                val isCurrent = globalIndex == currentLyricIndex
+                val textColor = if (isCurrent) colors.primary else colors.textSecondary
+                val fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                val scaleFactor = if (isCurrent) 1.05f else 0.9f  // 调整字体大小比例
+                
+                Text(
+                    text = lyric.value.ifEmpty { "♪" },
+                    style = JellyTunesTypography.artistName.copy(
+                        color = textColor,
+                        fontWeight = fontWeight,
+                        fontSize = JellyTunesTypography.artistName.fontSize * scaleFactor
+                    ),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 1.dp)  // 减少垂直padding
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LyricsMiniDisplay(
+    lyrics: List<LyricsLine>,
+    currentLyricIndex: Int?,
+    colors: JellyTunesColors,
+    modifier: Modifier = Modifier
+) {
+    val displayLyrics = remember(lyrics, currentLyricIndex) {
+        if (lyrics.isEmpty()) {
+            listOf("暂无歌词", "")
+        } else {
+            val currentIndex = currentLyricIndex ?: 0
+            val firstLine = lyrics.getOrNull(currentIndex)?.value?.ifEmpty { "♪" } ?: "♪"
+            val secondLine = lyrics.getOrNull(currentIndex + 1)?.value?.ifEmpty { "♪" } ?: ""
+            listOf(firstLine, secondLine)
+        }
+    }
+    
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Current lyric line (highlighted) - allow wrapping for long lyrics
+        Text(
+            text = displayLyrics[0],
+            style = JellyTunesTypography.trackTitle.copy(
+                color = colors.primary,
+                fontSize = JellyTunesTypography.trackTitle.fontSize * 0.7f
+            ),
+            maxLines = 3,  // 允许最多3行显示
+            overflow = TextOverflow.Visible,  // 显示完整内容而不省略
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        // Next lyric line (muted) - allow wrapping for long lyrics
+        Text(
+            text = displayLyrics[1],
+            style = JellyTunesTypography.artistName.copy(
+                color = colors.textMuted,
+                fontSize = JellyTunesTypography.artistName.fontSize * 0.8f
+            ),
+            maxLines = 2,  // 允许最多2行显示
+            overflow = TextOverflow.Visible,  // 显示完整内容而不省略
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
 }

@@ -11,7 +11,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class JellyfinRepository {
-    private val baseUrl = "${AppConfig.JELLYFIN_SERVER_URL}/"
+    private val baseUrl = "${AppConfig.NAVIDROME_SERVER_URL}/"
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
         .connectTimeout(AppConfig.CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
