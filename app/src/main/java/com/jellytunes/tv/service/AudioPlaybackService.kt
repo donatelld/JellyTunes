@@ -96,9 +96,10 @@ class AudioPlaybackService(private val context: Context) {
                 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     println("❌ Player error: ${error.errorCodeName} - ${error.message}")
+                    error.printStackTrace()
                     // Try next track on error
                     if (AppConfig.AUTO_PLAY_NEXT) {
-                        playNext()
+                        playNextSafe()
                     }
                 }
             })
@@ -176,52 +177,76 @@ class AudioPlaybackService(private val context: Context) {
     }
     
     private fun playCurrentSong(username: String, password: String) {
-        val song = audioQueue.getOrNull(currentIndex) ?: return
-        val track = NavidromeTrack(
-            id = song.id,
-            title = song.title,
-            artist = song.artist ?: "Unknown Artist",
-            album = song.album ?: "Unknown Album",
-            durationMs = (song.duration ?: 0) * 1000L, // Convert seconds to milliseconds
-            albumArtUrl = navidromeRepo.getCoverArtUrl(song.coverArt ?: song.albumId ?: song.id, username, password),
-            artistImageUrl = null, // Navidrome doesn't provide separate artist images
-            year = song.year,
-            trackNumber = song.trackNumber,
-            genre = song.genre
-        )
-        _currentTrack.value = track
+        // 添加边界检查
+        if (audioQueue.isEmpty()) {
+            println("❌ Audio queue is empty")
+            return
+        }
         
-        // Load lyrics for current song
-        loadLyricsForSong(song.id, username, password)
+        if (currentIndex < 0 || currentIndex >= audioQueue.size) {
+            println("❌ Invalid current index: $currentIndex, queue size: ${audioQueue.size}")
+            currentIndex = 0 // 重置到开头
+        }
         
-        val streamUrl = navidromeRepo.getAudioStreamUrl(song.id, username, password)
-        if (streamUrl != null) {
-            CoroutineScope(Dispatchers.Main).launch {
-                try {
-                    // Create media item with proper headers
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(streamUrl)
-                        .setMimeType("audio/*")
-                        .build()
-                    
-                    exoPlayer?.setMediaItem(mediaItem)
-                    exoPlayer?.prepare()
-                    exoPlayer?.play()
-                    
-                    println("▶️ Playing: ${song.title} by ${song.artist}")
-                } catch (e: Exception) {
-                    println("❌ Error playing song: ${e.message}")
-                    // Try next track if current fails
-                    if (AppConfig.AUTO_PLAY_NEXT) {
-                        playNext()
+        val song = audioQueue.getOrNull(currentIndex) ?: run {
+            println("❌ Failed to get song at index $currentIndex")
+            return
+        }
+        
+        try {
+            val track = NavidromeTrack(
+                id = song.id,
+                title = song.title,
+                artist = song.artist ?: "Unknown Artist",
+                album = song.album ?: "Unknown Album",
+                durationMs = (song.duration ?: 0) * 1000L, // Convert seconds to milliseconds
+                albumArtUrl = navidromeRepo.getCoverArtUrl(song.coverArt ?: song.albumId ?: song.id, username, password),
+                artistImageUrl = null, // Navidrome doesn't provide separate artist images
+                year = song.year,
+                trackNumber = song.trackNumber,
+                genre = song.genre
+            )
+            _currentTrack.value = track
+            
+            // Load lyrics for current song
+            loadLyricsForSong(song.id, username, password)
+            
+            val streamUrl = navidromeRepo.getAudioStreamUrl(song.id, username, password)
+            if (streamUrl != null) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    try {
+                        // Create media item with proper headers
+                        val mediaItem = MediaItem.Builder()
+                            .setUri(streamUrl)
+                            .setMimeType("audio/*")
+                            .build()
+                        
+                        exoPlayer?.setMediaItem(mediaItem)
+                        exoPlayer?.prepare()
+                        exoPlayer?.play()
+                        
+                        println("▶️ Playing: ${song.title} by ${song.artist}")
+                    } catch (e: Exception) {
+                        println("❌ Error playing song: ${e.message}")
+                        e.printStackTrace()
+                        // Try next track if current fails
+                        if (AppConfig.AUTO_PLAY_NEXT) {
+                            playNextSafe()
+                        }
                     }
                 }
+            } else {
+                println("❌ Failed to get stream URL for song: ${song.title}")
+                // Skip to next track if stream URL generation fails
+                if (AppConfig.AUTO_PLAY_NEXT) {
+                    playNextSafe()
+                }
             }
-        } else {
-            println("❌ Failed to get stream URL for song: ${song.title}")
-            // Skip to next track if stream URL generation fails
+        } catch (e: Exception) {
+            println("❌ Error creating track: ${e.message}")
+            e.printStackTrace()
             if (AppConfig.AUTO_PLAY_NEXT) {
-                playNext()
+                playNextSafe()
             }
         }
     }
@@ -243,26 +268,54 @@ class AudioPlaybackService(private val context: Context) {
     
     fun playNext() {
         println("⏭️ playNext() 被调用，当前索引: $currentIndex")
-        currentIndex = (currentIndex + 1) % audioQueue.size
-        println("⏭️ 新索引: $currentIndex")
-        // 获取用户名和密码用于构建URL
-        val username = AppConfig.NAVIDROME_USERNAME
-        val password = AppConfig.NAVIDROME_PASSWORD
-        playCurrentSong(username, password)
+        playNextSafe()
+    }
+    
+    private fun playNextSafe() {
+        try {
+            if (audioQueue.isEmpty()) {
+                println("❌ Audio queue is empty, cannot play next")
+                return
+            }
+            
+            currentIndex = (currentIndex + 1) % audioQueue.size
+            println("⏭️ 新索引: $currentIndex")
+            // 获取用户名和密码用于构建URL
+            val username = AppConfig.NAVIDROME_USERNAME
+            val password = AppConfig.NAVIDROME_PASSWORD
+            playCurrentSong(username, password)
+        } catch (e: Exception) {
+            println("❌ Error in playNextSafe: ${e.message}")
+            e.printStackTrace()
+        }
     }
     
     fun playPrevious() {
         println("⏮️ playPrevious() 被调用，当前索引: $currentIndex")
-        currentIndex = if (currentIndex > 0) {
-            currentIndex - 1
-        } else {
-            audioQueue.size - 1
+        playPreviousSafe()
+    }
+    
+    private fun playPreviousSafe() {
+        try {
+            if (audioQueue.isEmpty()) {
+                println("❌ Audio queue is empty, cannot play previous")
+                return
+            }
+            
+            currentIndex = if (currentIndex > 0) {
+                currentIndex - 1
+            } else {
+                audioQueue.size - 1
+            }
+            println("⏮️ 新索引: $currentIndex")
+            // 获取用户名和密码用于构建URL
+            val username = AppConfig.NAVIDROME_USERNAME
+            val password = AppConfig.NAVIDROME_PASSWORD
+            playCurrentSong(username, password)
+        } catch (e: Exception) {
+            println("❌ Error in playPreviousSafe: ${e.message}")
+            e.printStackTrace()
         }
-        println("⏮️ 新索引: $currentIndex")
-        // 获取用户名和密码用于构建URL
-        val username = AppConfig.NAVIDROME_USERNAME
-        val password = AppConfig.NAVIDROME_PASSWORD
-        playCurrentSong(username, password)
     }
     
     private fun loadLyricsForSong(songId: String, username: String, password: String) {
@@ -286,40 +339,50 @@ class AudioPlaybackService(private val context: Context) {
     }
     
     private fun startLyricSynchronization() {
-        // Cancel previous job if exists
-        lyricUpdateJob?.cancel()
-        
-        lyricUpdateJob = CoroutineScope(Dispatchers.Main).launch {
-            while (true) {
-                delay(100) // Check every 100ms for smooth lyric highlighting
-                
-                exoPlayer?.let { player ->
-                    if (player.isPlaying) {
-                        val currentPosition = player.currentPosition
-                        val lyrics = _currentLyrics.value
+        try {
+            // Cancel previous job if exists
+            lyricUpdateJob?.cancel()
+            
+            lyricUpdateJob = CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    while (true) {
+                        delay(100) // Check every 100ms for smooth lyric highlighting
                         
-                        // Find current lyric line
-                        var currentIndex: Int? = null
-                        for (i in lyrics.indices) {
-                            if (currentPosition >= lyrics[i].start) {
-                                currentIndex = i
-                            } else {
-                                break
+                        exoPlayer?.let { player ->
+                            if (player.isPlaying) {
+                                val currentPosition = player.currentPosition
+                                val lyrics = _currentLyrics.value
+                                
+                                // Find current lyric line with bounds checking
+                                var currentIndex: Int? = null
+                                for (i in lyrics.indices) {
+                                    if (currentPosition >= lyrics[i].start) {
+                                        currentIndex = i
+                                    } else {
+                                        break
+                                    }
+                                }
+                                
+                                // Update current lyric index if changed
+                                if (_currentLyricIndex.value != currentIndex) {
+                                    _currentLyricIndex.value = currentIndex
+                                }
                             }
                         }
                         
-                        // Update current lyric index if changed
-                        if (_currentLyricIndex.value != currentIndex) {
-                            _currentLyricIndex.value = currentIndex
+                        // Stop if no lyrics or player not initialized
+                        if (_currentLyrics.value.isEmpty() || exoPlayer == null) {
+                            break
                         }
                     }
-                }
-                
-                // Stop if no lyrics or player not initialized
-                if (_currentLyrics.value.isEmpty() || exoPlayer == null) {
-                    break
+                } catch (e: Exception) {
+                    println("❌ Error in lyric synchronization: ${e.message}")
+                    e.printStackTrace()
                 }
             }
+        } catch (e: Exception) {
+            println("❌ Error starting lyric synchronization: ${e.message}")
+            e.printStackTrace()
         }
     }
     
