@@ -254,20 +254,88 @@ fun PlayerScreen(
                         }
                     }
 
-                    // Middle section - Lyrics display (reduced height)
+                    // Middle section - Lyrics display (fixed layout for consistent positioning)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(0.25f)  // 减少到25%
                             .padding(horizontal = 24.dp),
-                        contentAlignment = Alignment.Center  // 改回居中对齐
+                        contentAlignment = Alignment.Center
                     ) {
-                        LyricsScrollDisplay(
-                            lyrics = playerState.currentLyrics,
-                            currentLyricIndex = playerState.currentLyricIndex,
-                            colors = colors,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        // 固定高度的容器确保第一行歌词始终可见
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(vertical = 8.dp)  // 给整体内容一些内边距
+                        ) {
+                            if (playerState.currentLyrics.isEmpty()) {
+                                // 无歌词时的显示
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "暂无歌词",
+                                        style = JellyTunesTypography.hint.copy(
+                                            color = colors.textMuted,
+                                            fontSize = JellyTunesTypography.hint.fontSize * 1.1f
+                                        )
+                                    )
+                                }
+                            } else {
+                                // 有歌词时的固定布局显示
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    // 显示最多3行歌词，每行固定高度
+                                    val displayLyrics = if (playerState.currentLyrics.size <= 3) {
+                                        playerState.currentLyrics
+                                    } else {
+                                        // 如果超过3行，显示当前行及相邻行
+                                        val currentIndex = playerState.currentLyricIndex ?: 0
+                                        val startIndex = (currentIndex - 1).coerceAtLeast(0)
+                                        val endIndex = (startIndex + 2).coerceAtMost(playerState.currentLyrics.size - 1)
+                                        playerState.currentLyrics.subList(startIndex, endIndex + 1)
+                                    }
+                                    
+                                    // 确保始终显示3行（不足时用空行补充）
+                                    val paddedLyrics = displayLyrics + List(3 - displayLyrics.size) { LyricsLine(0L, "") }
+                                    
+                                    paddedLyrics.take(3).forEachIndexed { index, lyric ->
+                                        val isCurrent = when {
+                                            playerState.currentLyrics.size <= 3 -> index == (playerState.currentLyricIndex ?: 0)
+                                            else -> {
+                                                val currentIndex = playerState.currentLyricIndex ?: 0
+                                                val displayIndex = (currentIndex - (playerState.currentLyricIndex ?: 0) + 1).coerceAtLeast(0)
+                                                index == displayIndex
+                                            }
+                                        }
+                                        
+                                        val textColor = if (isCurrent) colors.primary else colors.textSecondary
+                                        val fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                                        val scaleFactor = if (isCurrent) 1.05f else 0.9f
+                                        
+                                        Text(
+                                            text = lyric.value.ifEmpty { "♪" },
+                                            style = JellyTunesTypography.artistName.copy(
+                                                color = textColor,
+                                                fontWeight = fontWeight,
+                                                fontSize = JellyTunesTypography.artistName.fontSize * scaleFactor
+                                            ),
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .weight(1f)  // 每行等高分配
+                                                .padding(vertical = 2.dp),
+                                            maxLines = 2,  // 允许每行最多2行显示
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Bottom section - Controls (increased height)
@@ -739,79 +807,6 @@ fun HorizontalMarqueeText(
                 .padding(horizontal = 30.dp), // 减小间距到30dp以显示更多内容
             textAlign = TextAlign.Center
         )
-    }
-}
-
-@Composable
-private fun LyricsScrollDisplay(
-    lyrics: List<LyricsLine>,
-    currentLyricIndex: Int?,
-    colors: JellyTunesColors,
-    modifier: Modifier = Modifier
-) {
-    val listState = rememberLazyListState()
-    
-    // Auto-scroll to current lyric
-    LaunchedEffect(currentLyricIndex) {
-        currentLyricIndex?.let { index ->
-            // 只在有足够歌词时才滚动
-            if (lyrics.size > 3) {  // 改为3行以上才滚动
-                listState.animateScrollToItem(index.coerceAtMost(lyrics.size - 1))
-            }
-        }
-    }
-    
-    if (lyrics.isEmpty()) {
-        Box(
-            modifier = modifier,
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "暂无歌词",
-                style = JellyTunesTypography.hint.copy(
-                    color = colors.textMuted,
-                    fontSize = JellyTunesTypography.hint.fontSize * 1.1f
-                )
-            )
-        }
-    } else {
-        LazyColumn(
-            state = listState,
-            modifier = modifier,
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)  // 增加行间距到8dp
-        ) {
-            // 限制最多显示3行歌词
-            val displayLyrics = if (lyrics.size <= 3) {
-                lyrics
-            } else {
-                // 如果歌词超过3行，显示当前行及其前后行
-                val startIndex = (currentLyricIndex ?: 0).coerceAtLeast(0)
-                val endIndex = (startIndex + 2).coerceAtMost(lyrics.size - 1)
-                lyrics.subList(startIndex, endIndex + 1)
-            }
-            
-            itemsIndexed(displayLyrics) { index, lyric ->
-                val globalIndex = if (lyrics.size <= 3) index else index + (currentLyricIndex ?: 0)
-                val isCurrent = globalIndex == currentLyricIndex
-                val textColor = if (isCurrent) colors.primary else colors.textSecondary
-                val fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                val scaleFactor = if (isCurrent) 1.05f else 0.9f  // 调整字体大小比例
-                
-                Text(
-                    text = lyric.value.ifEmpty { "♪" },
-                    style = JellyTunesTypography.artistName.copy(
-                        color = textColor,
-                        fontWeight = fontWeight,
-                        fontSize = JellyTunesTypography.artistName.fontSize * scaleFactor
-                    ),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 1.dp)  // 减少垂直padding
-                )
-            }
-        }
     }
 }
 
