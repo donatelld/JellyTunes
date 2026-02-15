@@ -254,19 +254,19 @@ fun PlayerScreen(
                         }
                     }
 
-                    // Middle section - Lyrics display (fixed layout for consistent positioning)
+                    // Middle section - Lyrics display (adaptive layout for complete lyrics)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(0.25f)  // 减少到25%
+                            .weight(0.25f)  // 保持25%高度
                             .padding(horizontal = 24.dp),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.TopCenter  // 顶部对齐确保第一行固定
                     ) {
-                        // 固定高度的容器确保第一行歌词始终可见
+                        // 自适应高度容器
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(vertical = 8.dp)  // 给整体内容一些内边距
+                                .padding(top = 16.dp, bottom = 8.dp)  // 顶部留出空间，底部少许空间
                         ) {
                             if (playerState.currentLyrics.isEmpty()) {
                                 // 无歌词时的显示
@@ -283,36 +283,14 @@ fun PlayerScreen(
                                     )
                                 }
                             } else {
-                                // 有歌词时的固定布局显示
-                                Column(
+                                // 有歌词时的自适应布局
+                                LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.SpaceEvenly
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    // 显示最多3行歌词，每行固定高度
-                                    val displayLyrics = if (playerState.currentLyrics.size <= 3) {
-                                        playerState.currentLyrics
-                                    } else {
-                                        // 如果超过3行，显示当前行及相邻行
-                                        val currentIndex = playerState.currentLyricIndex ?: 0
-                                        val startIndex = (currentIndex - 1).coerceAtLeast(0)
-                                        val endIndex = (startIndex + 2).coerceAtMost(playerState.currentLyrics.size - 1)
-                                        playerState.currentLyrics.subList(startIndex, endIndex + 1)
-                                    }
-                                    
-                                    // 确保始终显示3行（不足时用空行补充）
-                                    val paddedLyrics = displayLyrics + List(3 - displayLyrics.size) { LyricsLine(0L, "") }
-                                    
-                                    paddedLyrics.take(3).forEachIndexed { index, lyric ->
-                                        val isCurrent = when {
-                                            playerState.currentLyrics.size <= 3 -> index == (playerState.currentLyricIndex ?: 0)
-                                            else -> {
-                                                val currentIndex = playerState.currentLyricIndex ?: 0
-                                                val displayIndex = (currentIndex - (playerState.currentLyricIndex ?: 0) + 1).coerceAtLeast(0)
-                                                index == displayIndex
-                                            }
-                                        }
-                                        
+                                    itemsIndexed(playerState.currentLyrics) { index, lyric ->
+                                        val isCurrent = index == playerState.currentLyricIndex
                                         val textColor = if (isCurrent) colors.primary else colors.textSecondary
                                         val fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
                                         val scaleFactor = if (isCurrent) 1.05f else 0.9f
@@ -327,10 +305,9 @@ fun PlayerScreen(
                                             textAlign = TextAlign.Center,
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .weight(1f)  // 每行等高分配
                                                 .padding(vertical = 2.dp),
-                                            maxLines = 2,  // 允许每行最多2行显示
-                                            overflow = TextOverflow.Ellipsis
+                                            maxLines = Int.MAX_VALUE,  // 允许无限换行显示完整内容
+                                            overflow = TextOverflow.Visible  // 显示完整内容不省略
                                         )
                                     }
                                 }
