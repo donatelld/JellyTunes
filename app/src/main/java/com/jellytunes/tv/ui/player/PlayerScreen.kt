@@ -5,9 +5,11 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +31,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -421,7 +425,7 @@ private fun PlayPauseButton(
     onClick: () -> Unit
 ) {
     val glowAlpha by animateFloatAsState(
-        targetValue = if (isPlaying) 0.6f else 0.3f,
+        targetValue = if (isPlaying) 0.7f else 0.4f,
         animationSpec = tween(300),
         label = "glow"
     )
@@ -432,51 +436,113 @@ private fun PlayPauseButton(
         label = "primary"
     )
 
-    // 添加缩放动画
+    // 缩放动画
     val scale by animateFloatAsState(
-        targetValue = if (isPlaying) 1.0f else 1.1f,
-        animationSpec = tween(200),
+        targetValue = if (isPlaying) 1.0f else 1.15f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
         label = "scale"
     )
     
-    // 添加旋转动画（仅用于播放状态切换时）
+    // 旋转动画（仅用于播放状态切换时）
     var rotationTarget by remember { mutableStateOf(0f) }
     val rotation by animateFloatAsState(
         targetValue = rotationTarget,
-        animationSpec = tween(150),
+        animationSpec = tween(200),
         label = "rotation"
+    )
+    
+    // 脉冲动画（仅在播放时）
+    val pulseScale by animateFloatAsState(
+        targetValue = if (isPlaying) 1.05f else 1f,
+        animationSpec = if (isPlaying) {
+            infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            tween(300)
+        },
+        label = "pulse"
     )
     
     Box(
         modifier = Modifier
-            .size(88.dp)
+            .size(96.dp)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                scaleX = scale * pulseScale
+                scaleY = scale * pulseScale
                 rotationZ = rotation
             }
             .drawBehind {
-                // Glow effect
+                // 多层光晕效果
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            animatedPrimary.copy(alpha = glowAlpha),
+                            animatedPrimary.copy(alpha = glowAlpha * 0.3f),
                             Color.Transparent
                         ),
-                        radius = size.minDimension
+                        radius = size.minDimension * 0.8f
                     )
                 )
+                
+                // 内层光晕（更强的发光效果）
+                if (isPlaying) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                animatedPrimary.copy(alpha = glowAlpha * 0.6f),
+                                Color.Transparent
+                            ),
+                            radius = size.minDimension * 0.4f
+                        )
+                    )
+                }
             },
         contentAlignment = Alignment.Center
     ) {
+        // 外层环形装饰
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(CircleShape)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            colors.primary.copy(alpha = 0.2f),
+                            colors.primaryLight.copy(alpha = 0.1f)
+                        )
+                    )
+                )
+                .border(
+                    width = 2.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(colors.primary, colors.primaryLight)
+                    ),
+                    shape = CircleShape
+                )
+        )
+        
+        // 主按钮
         Box(
             modifier = Modifier
                 .size(72.dp)
                 .clip(CircleShape)
                 .background(
                     brush = Brush.linearGradient(
-                        colors = listOf(colors.primary, colors.primaryLight)
+                        colors = listOf(
+                            colors.primary,
+                            colors.primaryLight.copy(alpha = 0.8f)
+                        )
                     )
+                )
+                .shadow(
+                    elevation = 8.dp,
+                    shape = CircleShape,
+                    ambientColor = animatedPrimary.copy(alpha = 0.3f),
+                    spotColor = animatedPrimary.copy(alpha = 0.4f)
                 )
                 .clickable { 
                     // 触发旋转动画
@@ -488,9 +554,22 @@ private fun PlayPauseButton(
             Icon(
                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 contentDescription = if (isPlaying) "Pause" else "Play",
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(32.dp),
                 tint = colors.textPrimary
             )
+            
+            // 播放时的小音符装饰
+            if (isPlaying) {
+                Icon(
+                    imageVector = Icons.Rounded.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-8).dp, y = 8.dp),
+                    tint = colors.textPrimary.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }
