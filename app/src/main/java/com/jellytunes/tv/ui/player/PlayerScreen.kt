@@ -259,9 +259,8 @@ fun PlayerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(0.25f)  // 减少到25%
-                            .padding(horizontal = 24.dp)
-                            .padding(top = 16.dp),  // 向下移动16dp
-                        contentAlignment = Alignment.TopCenter  // 改为顶部对齐，让歌词更居中
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center  // 改回居中对齐
                     ) {
                         LyricsScrollDisplay(
                             lyrics = playerState.currentLyrics,
